@@ -19,6 +19,49 @@ use tauri::{
 };
 
 use super::handle;
+
+/// Format traffic rate for display
+fn format_traffic_rate(bytes_per_sec: u64) -> String {
+    const UNITS: &[&str] = &["B/s", "KB/s", "MB/s", "GB/s"];
+    
+    if bytes_per_sec == 0 {
+        return "0 B/s".to_string();
+    }
+    
+    let mut value = bytes_per_sec as f64;
+    let mut unit_index = 0;
+    
+    while value >= 1024.0 && unit_index < UNITS.len() - 1 {
+        value /= 1024.0;
+        unit_index += 1;
+    }
+    
+    if value >= 100.0 {
+        format!("{:.0} {}", value, UNITS[unit_index])
+    } else if value >= 10.0 {
+        format!("{:.1} {}", value, UNITS[unit_index])
+    } else {
+        format!("{:.2} {}", value, UNITS[unit_index])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_format_traffic_rate() {
+        assert_eq!(format_traffic_rate(0), "0 B/s");
+        assert_eq!(format_traffic_rate(512), "512 B/s");
+        assert_eq!(format_traffic_rate(1024), "1.00 KB/s");
+        assert_eq!(format_traffic_rate(1536), "1.50 KB/s");
+        assert_eq!(format_traffic_rate(10240), "10.0 KB/s");
+        assert_eq!(format_traffic_rate(102400), "100 KB/s");
+        assert_eq!(format_traffic_rate(1048576), "1.00 MB/s");
+        assert_eq!(format_traffic_rate(1073741824), "1.00 GB/s");
+    }
+}
+
 pub struct Tray {}
 
 impl Tray {
@@ -245,6 +288,46 @@ fn create_tray_menu(
     )
     .unwrap();
 
+    // Get current traffic rates
+    let (up_rate, down_rate) = match tokio::runtime::Handle::try_current() {
+        Ok(_) => {
+            // We're in an async context, spawn a blocking task
+            match std::thread::spawn(|| {
+                tokio::runtime::Runtime::new()
+                    .unwrap()
+                    .block_on(async { cmds::get_traffic_rates().await })
+            }).join() {
+                Ok(Ok((up, down))) => (up, down),
+                _ => (0, 0),
+            }
+        }
+        Err(_) => {
+            // We're not in an async context, create a new runtime
+            match tokio::runtime::Runtime::new() {
+                Ok(rt) => match rt.block_on(cmds::get_traffic_rates()) {
+                    Ok((up, down)) => (up, down),
+                    Err(_) => (0, 0),
+                },
+                Err(_) => (0, 0),
+            }
+        }
+    };
+
+    let traffic_info = &MenuItem::with_id(
+        app_handle,
+        "traffic_info",
+        format!(
+            "{}: {} | {}: {}",
+            t!("Upload", "上传", use_zh),
+            format_traffic_rate(up_rate),
+            t!("Download", "下载", use_zh),
+            format_traffic_rate(down_rate)
+        ),
+        false, // disabled, just for display
+        None::<&str>,
+    )
+    .unwrap();
+
     let rule_mode = &CheckMenuItem::with_id(
         app_handle,
         "rule_mode",
@@ -389,6 +472,8 @@ fn create_tray_menu(
     let menu = tauri::menu::MenuBuilder::new(app_handle)
         .items(&[
             open_window,
+            separator,
+            traffic_info,
             separator,
             rule_mode,
             global_mode,

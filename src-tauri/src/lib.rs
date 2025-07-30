@@ -125,6 +125,7 @@ pub fn run() {
             cmds::save_profile_file,
             // clash api
             cmds::clash_api_get_proxy_delay,
+            cmds::get_traffic_rates,
             // backup
             cmds::create_webdav_backup,
             cmds::save_webdav_config,

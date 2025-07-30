@@ -5,6 +5,12 @@ use serde::{Deserialize, Serialize};
 use serde_yaml::Mapping;
 use std::collections::HashMap;
 
+#[derive(Default, Debug, Clone, Deserialize, Serialize)]
+pub struct TrafficData {
+    pub up: u64,
+    pub down: u64,
+}
+
 /// PUT /configs
 /// path 是绝对路径
 pub async fn put_configs(path: &str) -> Result<()> {
@@ -65,6 +71,26 @@ pub async fn get_proxy_delay(
     let response = builder.send().await?;
 
     Ok(response.json::<DelayRes>().await?)
+}
+
+/// GET /traffic
+/// 获取当前流量速率
+pub async fn get_traffic() -> Result<TrafficData> {
+    let (url, headers) = clash_client_info()?;
+    let url = format!("{url}/traffic");
+
+    let client = reqwest::ClientBuilder::new()
+        .no_proxy()
+        .timeout(std::time::Duration::from_secs(3))
+        .build()?;
+    let builder = client.get(&url).headers(headers);
+    let response = builder.send().await?;
+
+    if response.status().is_success() {
+        Ok(response.json::<TrafficData>().await?)
+    } else {
+        Ok(TrafficData::default())
+    }
 }
 
 /// 根据clash info获取clash服务地址和请求头

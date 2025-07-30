@@ -426,3 +426,13 @@ pub mod uwp {
         Ok(())
     }
 }
+
+#[tauri::command]
+pub async fn get_traffic_rates() -> CmdResult<(u64, u64)> {
+    use crate::core::clash_api;
+    
+    match clash_api::get_traffic().await {
+        Ok(traffic) => Ok((traffic.up, traffic.down)),
+        Err(_) => Ok((0, 0)), // Return 0,0 if unable to get traffic data
+    }
+}
